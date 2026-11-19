@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Senior full-stack software engineer portfolio covering SaaS architecture, production engineering and AI-assisted development.">
+<title>Teladoc Health | Ian Mark Ganut</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"><link rel="stylesheet" href="../styles.css"></head>
+<body><header class="site-header"><div class="container nav">
+<a class="brand" href="../index.html">&lt;IanMarkDev /&gt;</a>
+<nav class="nav-links" aria-label="Main navigation">
+<a href="../index.html">Home</a><a href="../about.html">About</a><a href="../projects.html" class="active" aria-current="page">Projects</a><a href="../architecture.html">Architecture</a><a href="../contact.html">Contact</a>
+</nav></div></header><main><div class="container"><div class="breadcrumb"><a href="../index.html">Home</a> / <a href="../projects.html">Projects</a> / Teladoc Health</div>
+<section class="page-intro"><div class="eyebrow">Event-driven data migration · Mar 2023 – Jan 2024</div><h1>Teladoc Health</h1><p class="lead">Node.js · Python · Apache Kafka · Protocol Buffers · MySQL</p></section>
+<div class="case-panel">
+<h2>Context</h2><p>Customers of the Livongo OneApp were being migrated to Teladoc Health. The migration needed a reliable way to confirm that user records arrived correctly across systems.</p>
+<h2>My contribution</h2><ul class="list"><li>Designed and implemented a Kafka-based reconciliation component covering 150,000–250,000 users or records.</li><li>Designed the workflow for eventual consistency, with idempotent Kafka consumers.</li><li>Added dead-letter queues for failed events and automated retries with exponential backoff.</li><li>Used Google Protocol Buffers for Kafka message schemas.</li><li>Designed daily reconciliation reporting against a target above 99.5% accuracy.</li></ul>
+<h2>Engineering considerations</h2><p>In a distributed migration, events can arrive late, twice, or not at all. Idempotent consumers, dead-letter queues, and backoff retries let the system recover safely, while daily reconciliation reports make any gaps visible.</p>
+<div class="tag-list"><span class="tag">Node.js</span><span class="tag">Python</span><span class="tag">Apache Kafka</span><span class="tag">Protocol Buffers</span><span class="tag">MySQL</span></div>
+</div><div class="actions"><a class="button secondary" href="../projects.html">← All projects</a><a class="button" href="../contact.html">Contact</a></div></div></main><footer class="footer"><div class="container footer-inner"><span>© 2026 Ian Mark Ganut. Portfolio and selected engineering work.</span><span>Built for clarity, maintainability, and real-world delivery.</span></div></footer></body></html>

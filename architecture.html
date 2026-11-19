@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Senior full-stack software engineer portfolio covering SaaS architecture, production engineering and AI-assisted development.">
+<title>SaaS Architecture | Ian Mark Ganut</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"><link rel="stylesheet" href="styles.css"></head>
+<body><header class="site-header"><div class="container nav">
+<a class="brand" href="index.html">&lt;IanMarkDev /&gt;</a>
+<nav class="nav-links" aria-label="Main navigation">
+<a href="index.html">Home</a><a href="about.html">About</a><a href="projects.html">Projects</a><a href="architecture.html" class="active" aria-current="page">Architecture</a><a href="contact.html">Contact</a>
+</nav></div></header><main><div class="container">
+<section class="page-intro"><div class="eyebrow">Architecture approach</div><h1>Designing a secure, maintainable member platform.</h1><p class="lead">For a membership SaaS product, I would start with the business model and access boundaries, then build a dependable foundation for accounts, subscriptions, integrations, and ongoing product delivery.</p></section>
+<section><h2>Illustrative architecture</h2><div class="architecture">
+<div class="arch-node">Next.js + TypeScript <small>Member portal, admin experience, responsive UI</small></div><div class="arch-arrow">↓</div>
+<div class="arch-node">Application / API layer <small>Business rules, authorization, validation, integration adapters</small></div><div class="arch-arrow">↓</div>
+<div class="grid-2"><div class="arch-node">PostgreSQL / Supabase <small>Tenant-aware data model, migrations, RLS</small></div><div class="arch-node">External services <small>Stripe, CRM, email, calendar, automation</small></div></div>
+<div class="arch-arrow">↓</div><div class="arch-node">Delivery and operations <small>CI/CD, automated tests, monitoring, backups, incident response</small></div>
+</div></section>
+<div class="split section"><section><h2>Foundations first</h2><ul class="list"><li>Model organizations, users, memberships, roles, and subscription entitlements explicitly.</li><li>Enforce tenant isolation in backend authorization and database policies.</li><li>Keep Stripe as the payment system of record and process signed webhooks idempotently.</li><li>Use integration adapters so CRM and marketing providers can be changed without rewriting core workflows.</li></ul></section><section><h2>Delivery discipline</h2><ul class="list"><li>Agree on an MVP and measurable launch criteria.</li><li>Use migrations, code review, unit tests, and end-to-end tests.</li><li>Separate environments and manage secrets securely.</li><li>Document architecture decisions, operational runbooks, and recovery procedures.</li></ul></section></div>
+<div class="callout"><p><strong>Technology note:</strong> This is an initial proposal, not a claim about the client's existing stack. Final choices should follow discovery, team strengths, product constraints, and operational requirements.</p></div>
+</div></main><footer class="footer"><div class="container footer-inner"><span>© 2026 Ian Mark Ganut. Portfolio and selected engineering work.</span><span>Built for clarity, maintainability, and real-world delivery.</span></div></footer></body></html>
