@@ -1,27 +1,27 @@
-# Senior Software Engineer Portfolio
+# Ian Mark Ganut — Portfolio
 
-A multi-page static portfolio designed for GitHub Pages.
+Personal portfolio of Ian Mark Ganut, a senior full-stack software engineer with 9 years of experience building SaaS products, integrations, and production systems.
 
-## Pages
-- `index.html` — Home
-- `about.html` — About and skills
-- `architecture.html` — SaaS architecture approach
-- `contact.html` — Contact details
-- `projects/lawdictate.html`
-- `projects/hospitality-safe.html`
-- `projects/career-engine.html`
-- `projects/rh-elite-services.html`
+**Live site:** https://ianmarkdev.github.io/
 
-## Publish on GitHub Pages
-1. Create a GitHub repository (for example, `portfolio`).
-2. Upload the contents of this folder to the repository root.
-3. Open **Settings → Pages**.
-4. Under Build and deployment, choose **Deploy from a branch**.
-5. Select branch `main` and folder `/ (root)`, then Save.
-6. Your site will be published at `https://YOUR-USERNAME.github.io/portfolio/`.
+## What's inside
 
-## Before publishing
-Search for `[Your Name]`, `[your.email@example.com]`, and bracketed placeholders. Replace them with accurate details.
-Check every project description, link, and permission to share. Add real screenshots only where you have approval.
-Do not describe Career Engine as commercially launched; it is marked as an ongoing build.
-The architecture page is an illustrative proposal, not a representation of a client's existing system.
+- **Home**: introduction and selected work
+- **About**: background, skills, and a downloadable resume
+- **Projects**: case studies covering SaaS platforms, e-commerce automation, payment processing, event-driven data migration, and social media integrations
+- **Architecture**: my approach to designing SaaS applications
+- **Contact**: email and GitHub
+
+## Tech
+
+A static site built with plain HTML and CSS: no framework and no build step. It's hosted on GitHub Pages from the `main` branch.
+
+## Running locally
+
+Open `index.html` in a browser, or serve the folder with any static server:
+
+```bash
+python -m http.server 8000
+```
+
+Then visit http://localhost:8000.
