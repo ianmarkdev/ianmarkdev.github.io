@@ -71,7 +71,8 @@
   ul.checks li { padding: 3px 0; }
   ul.checks li::marker { color: var(--accent); }
 
-  .closing { margin-top: 40px; padding-top: 28px; border-top: 1px solid var(--line); color: var(--heading); }
+  .aside { font-size: 15px; color: var(--muted); font-style: italic; }
+  .closing { color: var(--heading); }
   @media (max-width: 520px) {
     body { font-size: 16px; }
     .ledger th, .ledger td { padding-left: 12px; padding-right: 12px; }
@@ -91,72 +92,88 @@
 
   <section>
     <h2>Context</h2>
-    <p>At a previous fintech I owned the services that originated ACH debits for mortgages and loans, including a text-to-pay API. We submitted every debit through our ODFI’s API.</p>
-    <p>The most expensive class of bug was never a crash. It was the case where every system did exactly what it was told and the books still did not balance.</p>
+    <p>I owned the services that originated ACH debits for mortgages and loans, including a text-to-pay API. This is the failure mode I design against.</p>
+    <p>The most expensive class of payment bug is rarely a crash. It’s the case where every system does exactly what it was told and the books still don’t balance. The usual cause is one assumption: that “I didn’t get a response” means “the money didn’t move.”</p>
   </section>
 
   <section>
-    <h2>The incident</h2>
-    <p>A customer initiated a payment of roughly $1,250. We created one payment record and called the ODFI API. The call timed out after the ODFI had already accepted the entry. Retry logic generated a second internal ID and submitted another debit. Both entries settled. Two days later the settlement file showed two debits; our ledger contained only one <span class="state">SUCCESS</span> row.</p>
-    <p>The original payment was legitimate and correctly remained <span class="state">SUCCESS</span>. The second debit had never been recorded on our side, so it appeared as an unmatched settlement. Cash was over by the full amount. That excess belonged to the customer and sat as a liability until returned.</p>
+    <h2>A worked scenario</h2>
+    <p class="aside">Details and numbers are illustrative; the failure mode is real.</p>
+    <p>Consider an ACH debit for $1,250.00. The service creates one payment record, marks it <span class="state">PENDING</span>, and calls the bank’s API. The bank accepts the entry, but the response never arrives, and the call times out.</p>
+    <p>Suppose the retry logic treats the timeout as a failure and submits again with a new internal ID. Without a shared idempotency key, the bank has no way to know the two requests are the same payment, so it accepts both. The retry’s response arrives and the payment record is updated with the retry’s ID. The record now reflects the retry; the original submission is the orphan. Two days later:</p>
+
+    <div class="ledger">
+      <table>
+        <thead><tr><th>Source</th><th>What it shows</th></tr></thead>
+        <tbody>
+          <tr><td>Our ledger</td><td>One payment, <span class="state">SUCCESS</span>, $1,250.00</td></tr>
+          <tr><td>Bank settlement file</td><td>Two settled debits, $1,250.00 each</td></tr>
+          <tr><td>Customer’s bank statement</td><td>Debited twice</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p>Every component behaved correctly in isolation. The payment record is legitimate and should stay <span class="state">SUCCESS</span>. The original submission has no record on our side, so its settlement is unmatched, and cash is over by $1,250.00. That money belongs to the customer, so it is a liability until it goes back.</p>
+    <p>Without a daily match against the settlement file, the first signal is the customer calling support. With one, the unmatched debit surfaces the morning the file arrives.</p>
 
     <h3>Ledger entries</h3>
+    <p>Recording the unmatched debit:</p>
     <div class="ledger">
-      <div class="ledger-title">Unmatched debit</div>
       <table>
-        <thead><tr><th>Account</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead>
-        <tbody>
-          <tr><td>Cash</td><td class="num">amount</td><td class="num empty">—</td></tr>
-          <tr><td>Owed to Customer</td><td class="num empty">—</td><td class="num">amount</td></tr>
-        </tbody>
+        <thead><tr><th>Debit</th><th>Credit</th><th class="num">Amount</th></tr></thead>
+        <tbody><tr><td>Cash</td><td>Owed to customer</td><td class="num">$1,250.00</td></tr></tbody>
       </table>
     </div>
+    <p>Returning it with a reversing entry inside the NACHA window (after the window, a new ACH credit):</p>
     <div class="ledger">
-      <div class="ledger-title">Reversing entry <span>within the five-banking-day NACHA window</span></div>
       <table>
-        <thead><tr><th>Account</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead>
-        <tbody>
-          <tr><td>Owed to Customer</td><td class="num">amount</td><td class="num empty">—</td></tr>
-          <tr><td>Cash</td><td class="num empty">—</td><td class="num">amount</td></tr>
-        </tbody>
+        <thead><tr><th>Debit</th><th>Credit</th><th class="num">Amount</th></tr></thead>
+        <tbody><tr><td>Owed to customer</td><td>Cash</td><td class="num">$1,250.00</td></tr></tbody>
       </table>
     </div>
-    <p>We discovered the issue only when the customer called. At the time we had no automated daily match against the ODFI settlement file.</p>
+    <p>Both entries balance, and neither touches the original payment. The correction is new history, not an edit of old history.</p>
   </section>
 
   <section>
-    <h2>Design principles that came out of it</h2>
+    <h2>Design principles</h2>
     <ol class="principles">
-      <li>A timeout or missing acknowledgment is not a failure. It is an unknown outcome.</li>
-      <li>The original legitimate payment must stay <span class="state">SUCCESS</span>. A new record is created for any unmatched settlement.</li>
-      <li>Idempotency keys must be generated before the external call and must be stable across retries. For text-to-pay we built the key from the payment-request ID created on the first text, plus statement ID and amount. A second text for the same statement produced the same key and was rejected.</li>
-      <li>The settlement file (or carrier invoice) is the source of truth. Reconciliation creates the liability and posts the correcting transaction; it does not edit the original row.</li>
-      <li>Reversals are preferred inside the NACHA window; after that window a new credit is issued.</li>
+      <li>A timeout or missing acknowledgment is an unknown outcome, not a failure.</li>
+      <li>The original legitimate payment stays <span class="state">SUCCESS</span>. Any unmatched settlement gets a new record.</li>
+      <li>Idempotency keys are generated before the external call and stay stable across retries. For text-to-pay, derive the key from the payment-request ID created by the first text, the statement ID and the amount, so a second reply for the same statement is rejected instead of creating a second debit.</li>
+      <li>The settlement file (or, for shipping, the carrier invoice) is the source of truth. Reconciliation creates the liability and posts a correcting transaction rather than editing the original row.</li>
+      <li>Reverse inside the NACHA window. After it closes, issue a new credit.</li>
     </ol>
   </section>
 
   <section>
     <h2>Recommended state handling</h2>
-<div class="flow" role="img" aria-label="State transitions: PENDING goes to SUCCESS when acknowledgment is received, or to OUTCOME_UNKNOWN on timeout or no response. OUTCOME_UNKNOWN goes to RECONCILING when the settlement match runs, which ends in MATCHED or UNMATCHED. UNMATCHED creates a liability, which ends as REVERSED or REFUNDED."><span class="s">PENDING</span>
+<div class="flow" role="img" aria-label="State transitions: PENDING goes to SUCCESS on acknowledgment, or to OUTCOME_UNKNOWN on timeout or no response. OUTCOME_UNKNOWN goes to RECONCILING when the settlement match runs, which ends in MATCHED or UNMATCHED. UNMATCHED creates a liability record, which ends as REVERSED or REFUNDED."><span class="s">PENDING</span>
 <span class="arrow">├─→</span> <span class="ok">SUCCESS</span>            <span class="why">(acknowledgment received)</span>
 <span class="arrow">└─→</span> <span class="unk">OUTCOME_UNKNOWN</span>    <span class="why">(timeout / no response)</span>
      <span class="arrow">└─→</span> <span class="s">RECONCILING</span>    <span class="why">(settlement match runs)</span>
           <span class="arrow">├─→</span> <span class="ok">MATCHED</span>
-          <span class="arrow">└─→</span> <span class="bad">UNMATCHED</span> <span class="arrow">→</span> <span class="why">create liability</span> <span class="arrow">→</span> <span class="s">REVERSED</span> <span class="why">or</span> <span class="s">REFUNDED</span></div>
-    <p class="rule">The original payment row is never moved to <span class="state">REVERSED</span>. Only the newly created liability record is.</p>
+          <span class="arrow">└─→</span> <span class="bad">UNMATCHED</span> <span class="arrow">→</span> <span class="why">create liability record</span> <span class="arrow">→</span> <span class="s">REVERSED</span> <span class="why">or</span> <span class="s">REFUNDED</span></div>
+    <p>PENDING moves to SUCCESS on acknowledgment, or to OUTCOME_UNKNOWN on timeout. OUTCOME_UNKNOWN goes to RECONCILING, which ends in MATCHED or UNMATCHED. UNMATCHED creates a liability record, which is then REVERSED or REFUNDED.</p>
+    <p class="rule">The original payment is never set to <span class="state">REVERSED</span>; only the new liability record is.</p>
+    <p class="aside">In ACH, acknowledgment is not final: an accepted debit can still be returned days later (for example, R01 for insufficient funds). Returns are a separate flow and outside the scope of this note.</p>
   </section>
 
   <section>
     <h2>Mapping to label purchase</h2>
-    <p>Buying a carrier label is the same shape of problem: an external charge that can succeed even when the response is lost. The same rules apply:</p>
+    <p>Buying a carrier shipping label carries the same risk: the carrier can create, and later bill, a label even when our response is lost. The same rules apply:</p>
     <ul class="checks">
-      <li>Treat a timeout as <span class="state">OUTCOME_UNKNOWN</span>, not <span class="state">FAILED</span>.</li>
-      <li>Keep a stable request ID across retries.</li>
-      <li>Make the carrier invoice the source of truth.</li>
-      <li>Create a correcting transaction for any unmatched charge rather than mutating the original purchase record.</li>
-      <li>Place the label purchase at the saga pivot: everything before it is compensatable, everything after it is retry-only or reconciled.</li>
+      <li>Treat timeouts as <span class="state">OUTCOME_UNKNOWN</span>, not <span class="state">FAILED</span>.</li>
+      <li>Send a stable idempotency key across retries where the carrier’s API supports one.</li>
+      <li>Put the request ID in the shipment’s reference field, so each charge on the invoice can be matched back to a request.</li>
+      <li>Use the carrier invoice as the source of truth.</li>
+      <li>Post a correcting transaction for unmatched charges instead of changing the original purchase.</li>
+      <li>Place the label purchase at the saga pivot. Earlier steps can be compensated; later steps are retry-only or reconciled.</li>
     </ul>
-    <p class="closing">This pattern is why I now start every payment or money-adjacent design from the ambiguous case instead of the happy path.</p>
+  </section>
+
+  <section>
+    <h2>Closing</h2>
+    <p class="closing">Every payment or money-adjacent design should start from the ambiguous case, not the happy path. The happy path is the one that already works.</p>
   </section>
 </main>
 </body>
