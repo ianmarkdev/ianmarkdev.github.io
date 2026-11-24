@@ -135,7 +135,17 @@
   </section>
 
   <section>
-    <h2>Design principles</h2>
+    <h2>How it was fixed</h2>
+    <p>In the real incident, the issue surfaced only when the customer called. At the time there was no automated daily match against the ODFI settlement file. The fix had three parts:</p>
+    <ol class="principles">
+      <li><strong>Return the customer’s money.</strong> The duplicate debit was recorded as a liability and returned with a reversing entry inside the five-banking-day NACHA window. The original payment stayed <span class="state">SUCCESS</span> throughout.</li>
+      <li><strong>Make retries safe.</strong> The idempotency key is now generated before the external call and stays stable across retries. For text-to-pay, it is built from the payment-request ID created on the first text, plus the statement ID and amount. A second text for the same statement produces the same key and is rejected.</li>
+      <li><strong>Reconcile daily.</strong> A missing response is treated as <span class="state">OUTCOME_UNKNOWN</span> and resolved against the settlement file, so an unmatched debit surfaces the morning the file arrives instead of when the customer calls.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Design principles that came out of it</h2>
     <ol class="principles">
       <li>A timeout or missing acknowledgment is an unknown outcome, not a failure.</li>
       <li>The original legitimate payment stays <span class="state">SUCCESS</span>. Any unmatched settlement gets a new record.</li>
