@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Design note: how to treat timeouts on external payment calls as unknown outcomes, reconcile against the settlement file, and correct with new records instead of editing the original.">
+<title>Handling Ambiguous Payment Outcomes | Ian Mark Ganut</title>
+<link rel="icon" href="../favicon.ico" sizes="48x48"><link rel="icon" href="../favicon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="../apple-touch-icon.png"><link rel="manifest" href="../site.webmanifest"><meta name="theme-color" content="#030712">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #030712;
+    --panel: #0b1120;
+    --line: #1f2937;
+    --text: #e5e7eb;
+    --heading: #f8fafc;
+    --muted: #9ca3af;
+    --accent: #818cf8;
+    --indigo: #6366f1;
+    --good: #6ee7b7;
+    --warn: #fcd34d;
+    --bad: #fca5a5;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 17px/1.75 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 32px 20px 96px; }
+  .back { font-size: 14px; color: var(--muted); text-decoration: none; }
+  .back:hover { color: var(--accent); }
+  header.note-head { margin: 56px 0 48px; padding-bottom: 32px; border-bottom: 1px solid var(--line); }
+  .kicker { font-size: 13px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin: 0 0 14px; }
+  h1 { font-size: clamp(32px, 5vw, 42px); line-height: 1.15; letter-spacing: -.025em; color: var(--heading); margin: 0 0 12px; }
+  .byline { color: var(--muted); font-size: 15px; margin: 0; }
+  h2 { font-size: 22px; line-height: 1.3; letter-spacing: -.01em; color: var(--heading); margin: 56px 0 16px; }
+  h3 { font-size: 15px; font-weight: 600; color: var(--heading); margin: 28px 0 10px; }
+  p { margin: 0 0 18px; }
+  strong { color: var(--heading); font-weight: 600; }
+  code, .state { font-family: var(--mono); font-size: .86em; }
+  .state { color: var(--accent); background: rgba(99,102,241,.1); border: 1px solid rgba(99,102,241,.25); padding: 1px 6px; border-radius: 5px; white-space: nowrap; }
+
+  /* Ledger */
+  .ledger { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); margin: 14px 0 22px; overflow: hidden; }
+  .ledger-title { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 12px 18px; border-bottom: 1px solid var(--line); font-size: 14px; font-weight: 600; color: var(--heading); }
+  .ledger-title span { font-weight: 400; color: var(--muted); }
+  .ledger table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  .ledger th { text-align: left; font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 10px 18px 6px; }
+  .ledger td { padding: 8px 18px 12px; border-top: 1px solid rgba(31,41,55,.6); }
+  .ledger th.num, .ledger td.num { text-align: right; font-family: var(--mono); font-size: 14px; white-space: nowrap; }
+  .ledger td.empty { color: #4b5563; }
+
+  /* Principles */
+  ol.principles { list-style: none; counter-reset: p; padding: 0; margin: 20px 0 0; }
+  ol.principles li { counter-increment: p; position: relative; padding: 0 0 18px 44px; }
+  ol.principles li::before { content: counter(p); position: absolute; left: 0; top: 2px; width: 28px; height: 28px; border-radius: 50%; border: 1px solid rgba(99,102,241,.4); color: var(--accent); font-size: 13px; font-weight: 600; display: grid; place-items: center; }
+
+  /* State machine */
+  .flow { font-family: var(--mono); font-size: 14px; line-height: 2; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px; margin: 16px 0 18px; overflow-x: auto; white-space: pre; color: var(--text); }
+  .flow .s { color: var(--heading); font-weight: 500; }
+  .flow .ok { color: var(--good); }
+  .flow .unk { color: var(--warn); }
+  .flow .bad { color: var(--bad); }
+  .flow .arrow, .flow .why { color: var(--muted); }
+  .rule { border-left: 3px solid var(--indigo); padding: 4px 0 4px 16px; margin: 0 0 18px; }
+
+  ul.checks { padding-left: 20px; margin: 14px 0 22px; }
+  ul.checks li { padding: 3px 0; }
+  ul.checks li::marker { color: var(--accent); }
+
+  .closing { margin-top: 40px; padding-top: 28px; border-top: 1px solid var(--line); color: var(--heading); }
+  @media (max-width: 520px) {
+    body { font-size: 16px; }
+    .ledger th, .ledger td { padding-left: 12px; padding-right: 12px; }
+    .flow { font-size: 12.5px; padding: 16px; }
+  }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <a class="back" href="../index.html">← Ian Mark Ganut</a>
+
+  <header class="note-head">
+    <p class="kicker">Design note</p>
+    <h1>Handling Ambiguous Payment Outcomes</h1>
+    <p class="byline">Ian Mark Ganut · November 2026</p>
+  </header>
+
+  <section>
+    <h2>Context</h2>
+    <p>At a previous fintech I owned the services that originated ACH debits for mortgages and loans, including a text-to-pay API. We submitted every debit through our ODFI’s API.</p>
+    <p>The most expensive class of bug was never a crash. It was the case where every system did exactly what it was told and the books still did not balance.</p>
+  </section>
+
+  <section>
+    <h2>The incident</h2>
+    <p>A customer initiated a payment of roughly $1,250. We created one payment record and called the ODFI API. The call timed out after the ODFI had already accepted the entry. Retry logic generated a second internal ID and submitted another debit. Both entries settled. Two days later the settlement file showed two debits; our ledger contained only one <span class="state">SUCCESS</span> row.</p>
+    <p>The original payment was legitimate and correctly remained <span class="state">SUCCESS</span>. The second debit had never been recorded on our side, so it appeared as an unmatched settlement. Cash was over by the full amount. That excess belonged to the customer and sat as a liability until returned.</p>
+
+    <h3>Ledger entries</h3>
+    <div class="ledger">
+      <div class="ledger-title">Unmatched debit</div>
+      <table>
+        <thead><tr><th>Account</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead>
+        <tbody>
+          <tr><td>Cash</td><td class="num">amount</td><td class="num empty">—</td></tr>
+          <tr><td>Owed to Customer</td><td class="num empty">—</td><td class="num">amount</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="ledger">
+      <div class="ledger-title">Reversing entry <span>within the five-banking-day NACHA window</span></div>
+      <table>
+        <thead><tr><th>Account</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead>
+        <tbody>
+          <tr><td>Owed to Customer</td><td class="num">amount</td><td class="num empty">—</td></tr>
+          <tr><td>Cash</td><td class="num empty">—</td><td class="num">amount</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>We discovered the issue only when the customer called. At the time we had no automated daily match against the ODFI settlement file.</p>
+  </section>
+
+  <section>
+    <h2>Design principles that came out of it</h2>
+    <ol class="principles">
+      <li>A timeout or missing acknowledgment is not a failure. It is an unknown outcome.</li>
+      <li>The original legitimate payment must stay <span class="state">SUCCESS</span>. A new record is created for any unmatched settlement.</li>
+      <li>Idempotency keys must be generated before the external call and must be stable across retries. For text-to-pay we built the key from the payment-request ID created on the first text, plus statement ID and amount. A second text for the same statement produced the same key and was rejected.</li>
+      <li>The settlement file (or carrier invoice) is the source of truth. Reconciliation creates the liability and posts the correcting transaction; it does not edit the original row.</li>
+      <li>Reversals are preferred inside the NACHA window; after that window a new credit is issued.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Recommended state handling</h2>
+<div class="flow" role="img" aria-label="State transitions: PENDING goes to SUCCESS when acknowledgment is received, or to OUTCOME_UNKNOWN on timeout or no response. OUTCOME_UNKNOWN goes to RECONCILING when the settlement match runs, which ends in MATCHED or UNMATCHED. UNMATCHED creates a liability, which ends as REVERSED or REFUNDED."><span class="s">PENDING</span>
+<span class="arrow">├─→</span> <span class="ok">SUCCESS</span>            <span class="why">(acknowledgment received)</span>
+<span class="arrow">└─→</span> <span class="unk">OUTCOME_UNKNOWN</span>    <span class="why">(timeout / no response)</span>
+     <span class="arrow">└─→</span> <span class="s">RECONCILING</span>    <span class="why">(settlement match runs)</span>
+          <span class="arrow">├─→</span> <span class="ok">MATCHED</span>
+          <span class="arrow">└─→</span> <span class="bad">UNMATCHED</span> <span class="arrow">→</span> <span class="why">create liability</span> <span class="arrow">→</span> <span class="s">REVERSED</span> <span class="why">or</span> <span class="s">REFUNDED</span></div>
+    <p class="rule">The original payment row is never moved to <span class="state">REVERSED</span>. Only the newly created liability record is.</p>
+  </section>
+
+  <section>
+    <h2>Mapping to label purchase</h2>
+    <p>Buying a carrier label is the same shape of problem: an external charge that can succeed even when the response is lost. The same rules apply:</p>
+    <ul class="checks">
+      <li>Treat a timeout as <span class="state">OUTCOME_UNKNOWN</span>, not <span class="state">FAILED</span>.</li>
+      <li>Keep a stable request ID across retries.</li>
+      <li>Make the carrier invoice the source of truth.</li>
+      <li>Create a correcting transaction for any unmatched charge rather than mutating the original purchase record.</li>
+      <li>Place the label purchase at the saga pivot: everything before it is compensatable, everything after it is retry-only or reconciled.</li>
+    </ul>
+    <p class="closing">This pattern is why I now start every payment or money-adjacent design from the ambiguous case instead of the happy path.</p>
+  </section>
+</main>
+</body>
+</html>
